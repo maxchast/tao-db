@@ -20,9 +20,11 @@ function getAnthropic() {
   if (!apiKey) {
     throw new Error('ANTHROPIC_API_KEY is not set — add it in Railway → Variables (service, not build-only)')
   }
+  // If ANTHROPIC_AUTH_TOKEN exists but is empty, the SDK still sends `Authorization: Bearer ` and
+  // Anthropic can return 401 invalid x-api-key. Force API-key-only auth.
   return new Anthropic({
     apiKey,
-    defaultHeaders: { 'anthropic-version': '2023-06-01' },
+    authToken: null,
   })
 }
 
