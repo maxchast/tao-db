@@ -1,6 +1,7 @@
-import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
 import { coerceAnonKey, coerceSupabaseUrl } from '@/lib/supabase'
+
+const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages'
 
 function normalizeAnthropicKey(raw: string | undefined): string | null {
   if (!raw) return null
@@ -15,17 +16,50 @@ function normalizeAnthropicKey(raw: string | undefined): string | null {
   return k || null
 }
 
-function getAnthropic() {
-  const apiKey = normalizeAnthropicKey(process.env.ANTHROPIC_API_KEY)
+function getAnthropicApiKey(): string {
+  const apiKey = normalizeAnthropicKey(
+    process.env.ANTHROPIC_API_KEY ?? process.env.CLAUDE_API_KEY
+  )
   if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set — add it in Railway → Variables (service, not build-only)')
+    throw new Error(
+      'ANTHROPIC_API_KEY is not set — add it in Railway → Variables (service, not build-only). Optional alias: CLAUDE_API_KEY.'
+    )
   }
-  // If ANTHROPIC_AUTH_TOKEN exists but is empty, the SDK still sends `Authorization: Bearer ` and
-  // Anthropic can return 401 invalid x-api-key. Force API-key-only auth.
-  return new Anthropic({
-    apiKey,
-    authToken: null,
+  return apiKey
+}
+
+type ApiContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+
+type ApiMessageResponse = {
+  id: string
+  role: string
+  content: ApiContentBlock[]
+  stop_reason: string | null
+}
+
+type MessageRow = { role: 'user' | 'assistant'; content: string }
+
+/** Raw HTTP: only `x-api-key` + `anthropic-version` — avoids SDK / Bearer header edge cases. */
+async function anthropicMessagesCreate(
+  apiKey: string,
+  body: Record<string, unknown>
+): Promise<ApiMessageResponse> {
+  const res = await fetch(ANTHROPIC_MESSAGES_URL, {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
   })
+  const raw = await res.text()
+  if (!res.ok) {
+    throw new Error(`${res.status} ${raw}`)
+  }
+  return JSON.parse(raw) as ApiMessageResponse
 }
 
 /**
@@ -36,7 +70,9 @@ export async function GET() {
   if (process.env.AGENT_DEBUG !== '1') {
     return Response.json({ error: 'Not found' }, { status: 404 })
   }
-  const key = normalizeAnthropicKey(process.env.ANTHROPIC_API_KEY)
+  const key = normalizeAnthropicKey(
+    process.env.ANTHROPIC_API_KEY ?? process.env.CLAUDE_API_KEY
+  )
   return Response.json({
     anthropic_key_present: Boolean(key),
     anthropic_key_length: key?.length ?? 0,
@@ -118,7 +154,7 @@ const RESEARCH_SYSTEM_PROMPT = `You are the TAO Research Agent — an expert AI 
 7. Reference previous research and chat context when relevant.
 8. Format responses with markdown for readability.`
 
-const MEMORY_TOOLS: Anthropic.Tool[] = [
+const MEMORY_TOOLS: Record<string, unknown>[] = [
   {
     name: 'save_memory',
     description: 'Save an important fact, decision, or research finding to shared team memory. Use this when you learn something that would be valuable for the whole team to know in future conversations.',
@@ -195,7 +231,7 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Agent not implemented yet' }, { status: 400 })
     }
 
-    const anthropic = getAnthropic()
+    const apiKey = getAnthropicApiKey()
     const supabase = getSupabase()
 
     await supabase.from('agent_messages').insert([{
@@ -223,30 +259,37 @@ export async function POST(request: Request) {
       ? `\n\n## Shared Team Memory\nThe following are previously saved research notes and decisions:\n${memories.map(m => `- **[${m.category}] ${m.key}**: ${m.content}`).join('\n')}`
       : ''
 
-    // Build message history for Claude
-    const messages: Anthropic.MessageParam[] = (history ?? []).map(msg => ({
+    const messages: Array<{
+      role: 'user' | 'assistant'
+      content: string | ApiContentBlock[] | Array<{ type: 'tool_result'; tool_use_id: string; content: string }>
+    }> = (history ?? []).map(msg => ({
       role: msg.role as 'user' | 'assistant',
       content: msg.content,
     }))
 
-    // Call Claude with tool use loop
-    let response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+    const model = process.env.ANTHROPIC_MODEL?.trim() || 'claude-sonnet-4-20250514'
+
+    let response = await anthropicMessagesCreate(apiKey, {
+      model,
       max_tokens: 2048,
       system: RESEARCH_SYSTEM_PROMPT + memoryContext,
       tools: MEMORY_TOOLS,
       messages,
     })
 
-    // Handle tool use loop
     while (response.stop_reason === 'tool_use') {
       const toolBlocks = response.content.filter(
-        (b): b is Anthropic.ContentBlock & { type: 'tool_use' } => b.type === 'tool_use'
+        (b): b is { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> } =>
+          b.type === 'tool_use'
       )
 
-      const toolResults: Anthropic.ToolResultBlockParam[] = []
+      const toolResults: Array<{ type: 'tool_result'; tool_use_id: string; content: string }> = []
       for (const tool of toolBlocks) {
-        const result = await handleToolCall(tool.name, tool.input as Record<string, string>, supabase)
+        const result = await handleToolCall(
+          tool.name,
+          tool.input as Record<string, string>,
+          supabase
+        )
         toolResults.push({
           type: 'tool_result',
           tool_use_id: tool.id,
@@ -257,8 +300,8 @@ export async function POST(request: Request) {
       messages.push({ role: 'assistant', content: response.content })
       messages.push({ role: 'user', content: toolResults })
 
-      response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+      response = await anthropicMessagesCreate(apiKey, {
+        model,
         max_tokens: 2048,
         system: RESEARCH_SYSTEM_PROMPT + memoryContext,
         tools: MEMORY_TOOLS,
@@ -266,9 +309,8 @@ export async function POST(request: Request) {
       })
     }
 
-    // Extract text response
     const textContent = response.content
-      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
       .map(b => b.text)
       .join('')
 
