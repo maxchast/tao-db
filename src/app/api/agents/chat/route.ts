@@ -2,9 +2,20 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
 import { coerceAnonKey, coerceSupabaseUrl } from '@/lib/supabase'
 
+function normalizeAnthropicKey(raw: string | undefined): string | null {
+  if (!raw) return null
+  let k = raw.trim()
+  if ((k.startsWith('"') && k.endsWith('"')) || (k.startsWith("'") && k.endsWith("'"))) {
+    k = k.slice(1, -1).trim()
+  }
+  return k || null
+}
+
 function getAnthropic() {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY is not set — add it to your environment variables')
+  const apiKey = normalizeAnthropicKey(process.env.ANTHROPIC_API_KEY)
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY is not set — add it in Railway → Variables (service, not build-only)')
+  }
   return new Anthropic({ apiKey })
 }
 
@@ -238,7 +249,21 @@ export async function POST(request: Request) {
     return Response.json({ response: textContent })
   } catch (err) {
     console.error('Agent chat error:', err)
-    const message = err instanceof Error ? err.message : 'Unknown error'
+    const message = err instanceof Error ? err.message : String(err)
+    const authFail =
+      message.includes('401') ||
+      message.includes('authentication_error') ||
+      message.includes('invalid x-api-key') ||
+      message.includes('x-api-key')
+    if (authFail) {
+      return Response.json(
+        {
+          error:
+            'Anthropic rejected the API key (401). In Railway → Variables, set ANTHROPIC_API_KEY to a current key from console.anthropic.com — no quotes, no spaces. Redeploy after saving. If this key was ever shared publicly, create a new key there.',
+        },
+        { status: 502 }
+      )
+    }
     return Response.json({ error: message }, { status: 500 })
   }
 }
