@@ -4,9 +4,13 @@ import { coerceAnonKey, coerceSupabaseUrl } from '@/lib/supabase'
 
 function normalizeAnthropicKey(raw: string | undefined): string | null {
   if (!raw) return null
-  let k = raw.trim()
+  let k = raw
+    .replace(/^\uFEFF/, '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\s+/g, '')
+    .trim()
   if ((k.startsWith('"') && k.endsWith('"')) || (k.startsWith("'") && k.endsWith("'"))) {
-    k = k.slice(1, -1).trim()
+    k = k.slice(1, -1).replace(/\s+/g, '').trim()
   }
   return k || null
 }
