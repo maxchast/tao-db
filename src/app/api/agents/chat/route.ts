@@ -20,7 +20,34 @@ function getAnthropic() {
   if (!apiKey) {
     throw new Error('ANTHROPIC_API_KEY is not set — add it in Railway → Variables (service, not build-only)')
   }
-  return new Anthropic({ apiKey })
+  return new Anthropic({
+    apiKey,
+    defaultHeaders: { 'anthropic-version': '2023-06-01' },
+  })
+}
+
+/**
+ * Temporary: set AGENT_DEBUG=1 in Railway, GET this URL, then remove AGENT_DEBUG.
+ * Tells you if the key exists at runtime (length) without printing the secret.
+ */
+export async function GET() {
+  if (process.env.AGENT_DEBUG !== '1') {
+    return Response.json({ error: 'Not found' }, { status: 404 })
+  }
+  const key = normalizeAnthropicKey(process.env.ANTHROPIC_API_KEY)
+  return Response.json({
+    anthropic_key_present: Boolean(key),
+    anthropic_key_length: key?.length ?? 0,
+    looks_like_anthropic_key: key?.startsWith('sk-ant-') ?? false,
+    hint:
+      !key
+        ? 'ANTHROPIC_API_KEY missing at runtime — wrong service or redeploy needed'
+        : key.length < 90
+          ? 'Key looks too short — compare length to console.anthropic.com copy'
+          : !key.startsWith('sk-ant-')
+            ? 'Key should start with sk-ant-'
+            : 'Key shape OK; if chat still 401, key is revoked/wrong workspace — create a new key in Anthropic console',
+  })
 }
 
 function getSupabase() {
