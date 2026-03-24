@@ -1,12 +1,16 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' })
+function getAnthropic() {
+  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' })
+}
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
-  process.env.SUPABASE_SERVICE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
-)
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
+    process.env.SUPABASE_SERVICE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
+  )
+}
 
 const RESEARCH_SYSTEM_PROMPT = `You are the TAO Research Agent — an expert AI assistant specialized in the Bittensor (TAO) ecosystem. You help miners, validators, and researchers navigate the Bittensor network.
 
@@ -104,10 +108,10 @@ const MEMORY_TOOLS: Anthropic.Tool[] = [
   },
 ]
 
-async function handleToolCall(toolName: string, toolInput: Record<string, string>) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleToolCall(toolName: string, toolInput: Record<string, string>, supabase: any) {
   if (toolName === 'save_memory') {
     const { key, content, category } = toolInput
-    // Upsert memory
     const { error } = await supabase
       .from('agent_memory')
       .upsert({ key, content, category, agent_id: 'research' }, { onConflict: 'key' })
@@ -117,7 +121,6 @@ async function handleToolCall(toolName: string, toolInput: Record<string, string
 
   if (toolName === 'search_memory') {
     const { query } = toolInput
-    // Simple text search across memories
     const { data } = await supabase
       .from('agent_memory')
       .select('*')
@@ -146,14 +149,15 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Agent not implemented yet' }, { status: 400 })
     }
 
-    // Save user message
+    const anthropic = getAnthropic()
+    const supabase = getSupabase()
+
     await supabase.from('agent_messages').insert([{
       agent_id: agentId,
       role: 'user',
       content: message,
     }])
 
-    // Load chat history (last 50 messages)
     const { data: history } = await supabase
       .from('agent_messages')
       .select('*')
@@ -161,7 +165,6 @@ export async function POST(request: Request) {
       .order('created_at', { ascending: true })
       .limit(50)
 
-    // Load all memories for context
     const { data: memories } = await supabase
       .from('agent_memory')
       .select('*')
@@ -197,7 +200,7 @@ export async function POST(request: Request) {
 
       const toolResults: Anthropic.ToolResultBlockParam[] = []
       for (const tool of toolBlocks) {
-        const result = await handleToolCall(tool.name, tool.input as Record<string, string>)
+        const result = await handleToolCall(tool.name, tool.input as Record<string, string>, supabase)
         toolResults.push({
           type: 'tool_result',
           tool_use_id: tool.id,
