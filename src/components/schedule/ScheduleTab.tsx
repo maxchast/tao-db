@@ -140,6 +140,7 @@ export default function ScheduleTab() {
   const [filter, setFilter] = useState<'all' | Task['status']>('all')
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState<'created' | 'due' | 'priority'>('created')
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     fetchTasks()
@@ -160,6 +161,7 @@ export default function ScheduleTab() {
   }
 
   function openNewForm() {
+    setSaveError(null)
     setForm({ ...emptyForm, owner_id: profile?.id ?? '', owner: profile?.display_name ?? '' })
     setEditingId(null)
     setShowForm(true)
@@ -173,16 +175,28 @@ export default function ScheduleTab() {
 
   async function saveTask() {
     if (!form.title.trim()) return
-    const payload = { ...form }
-    if (editingId) {
-      await supabase.from('tasks').update(payload).eq('id', editingId)
-    } else {
-      await supabase.from('tasks').insert([payload])
+    // UUID columns reject ''; unassigned owner must be null or insert/update fails silently before this fix.
+    const payload = {
+      title: form.title.trim(),
+      description: form.description.trim(),
+      owner: form.owner.trim(),
+      owner_id: form.owner_id.trim() ? form.owner_id.trim() : null,
+      due_date: form.due_date.trim() ? form.due_date.trim() : null,
+      status: form.status,
+      priority: form.priority,
     }
+    const res = editingId
+      ? await supabase.from('tasks').update(payload).eq('id', editingId)
+      : await supabase.from('tasks').insert([payload])
+    if (res.error) {
+      setSaveError(res.error.message)
+      return
+    }
+    setSaveError(null)
     setForm(emptyForm)
     setShowForm(false)
     setEditingId(null)
-    fetchTasks()
+    await fetchTasks()
   }
 
   async function deleteTask(id: string) {
@@ -196,6 +210,7 @@ export default function ScheduleTab() {
   }
 
   function startEdit(task: Task) {
+    setSaveError(null)
     setForm({
       title: task.title,
       description: task.description,
@@ -342,11 +357,26 @@ export default function ScheduleTab() {
         <Panel className="mb-5 fade-in">
           <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Label>{editingId ? 'EDIT TASK' : 'NEW TASK'}</Label>
-            <button onClick={() => { setShowForm(false); setEditingId(null); setForm(emptyForm) }}
+            <button onClick={() => { setShowForm(false); setEditingId(null); setForm(emptyForm); setSaveError(null) }}
               style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer' }}>
               <X size={14} />
             </button>
           </div>
+          {saveError && (
+            <div
+              style={{
+                margin: '0 20px',
+                padding: '10px 12px',
+                fontSize: 11,
+                color: 'var(--text-primary)',
+                background: 'var(--surface-2)',
+                border: '1px solid var(--border-bright)',
+                borderRadius: 3,
+              }}
+            >
+              {saveError}
+            </div>
+          )}
           <div style={{ padding: 20, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div style={{ gridColumn: '1 / -1' }}>
               <Input placeholder="Task title *" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
@@ -374,7 +404,7 @@ export default function ScheduleTab() {
           </div>
           <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button
-              onClick={() => { setShowForm(false); setEditingId(null); setForm(emptyForm) }}
+              onClick={() => { setShowForm(false); setEditingId(null); setForm(emptyForm); setSaveError(null) }}
               style={{ padding: '7px 14px', background: 'none', border: '1px solid var(--border)', borderRadius: 3, color: 'var(--text-secondary)', fontSize: 11, fontFamily: 'inherit', cursor: 'pointer', letterSpacing: '0.06em' }}
             >
               CANCEL

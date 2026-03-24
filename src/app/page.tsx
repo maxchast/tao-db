@@ -7,6 +7,7 @@ import ScheduleTab from '@/components/schedule/ScheduleTab'
 import ResearchTab from '@/components/research/ResearchTab'
 import WalletTab from '@/components/wallet/WalletTab'
 import AgentsTab from '@/components/agents/AgentsTab'
+import GrayDashTab from '@/components/gray-dash/GrayDashTab'
 import ProfileTab from '@/components/profile/ProfileTab'
 import LoginScreen from '@/components/auth/LoginScreen'
 import StarField from '@/components/StarField'
@@ -21,6 +22,7 @@ const TAB_LABELS: Record<Tab, string> = {
   research: 'Subnet Research',
   wallet: 'Wallet',
   agents: 'Agents',
+  grayDash: 'Gray Dash',
   profile: 'Profile',
 }
 
@@ -81,6 +83,7 @@ export default function Home() {
         {activeTab === 'research' && <ResearchTab />}
         {activeTab === 'wallet' && <WalletTab />}
         {activeTab === 'agents' && <AgentsTab />}
+        {activeTab === 'grayDash' && <GrayDashTab />}
         {activeTab === 'profile' && <ProfileTab />}
       </main>
     </div>

@@ -12,6 +12,14 @@
   --text-secondary: #888888;
   --text-dim: #444444;
   --accent: #ffffff;
+  /* Gray Dash (miner telemetry) */
+  --dash-live: #4ade80;
+  --dash-offline: #f87171;
+  --dash-warn: #fbbf24;
+  --dash-muted: #6b7280;
+  --dash-chart-gpu: rgba(255, 255, 255, 0.75);
+  --dash-chart-inc: #4ade80;
+  --dash-chart-trust: #a78bfa;
 }
 
 .light {
@@ -24,6 +32,13 @@
   --text-secondary: #666666;
   --text-dim: #aaaaaa;
   --accent: #0a0a0a;
+  --dash-live: #16a34a;
+  --dash-offline: #dc2626;
+  --dash-warn: #d97706;
+  --dash-muted: #737373;
+  --dash-chart-gpu: rgba(10, 10, 10, 0.75);
+  --dash-chart-inc: #16a34a;
+  --dash-chart-trust: #7c3aed;
 }
 
 * {

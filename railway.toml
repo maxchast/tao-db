@@ -1,3 +1,13 @@
+# Gray Dash (miner telemetry) — required for the Gray Dash tab in production:
+#
+# Recommended on Railway: expose your Bit FastAPI (port 8080) with Cloudflare Tunnel / ngrok, then set:
+#   NEXT_PUBLIC_GRAY_DASH_ORIGIN=https://your-tunnel.example.com
+# (no trailing slash, no /api). Rebuild after adding — it is inlined at build time.
+# Add your Railway app URL to Bit's CORSMiddleware allow_origins (e.g. https://YOUR_SERVICE.up.railway.app).
+#
+# Alternative: GRAY_DASH_API_URL=https://public-miner-url  — Next server proxies; URL must be reachable FROM Railway.
+# Do not use http://127.0.0.1:8080 on Railway — it is not your home PC.
+
 [build]
 builder = "nixpacks"
 buildCommand = "NODE_OPTIONS=--max-old-space-size=8192 npm run build"
