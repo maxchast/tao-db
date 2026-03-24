@@ -19,6 +19,8 @@ export function coerceSupabaseUrl(raw: string | undefined): string {
 export function coerceAnonKey(raw: string | undefined): string {
   const v = raw?.trim()
   if (!v || v.length < 20) return DEFAULT_ANON_KEY
+  // Never use the service/secret key as the browser client key — Supabase returns "Invalid API key"
+  if (v.startsWith('sb_secret_')) return DEFAULT_ANON_KEY
   return v
 }
 
