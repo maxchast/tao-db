@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, Pencil, Trash2, X, Search, ArrowUpDown } from 'lucide-react'
 import { supabase, type Task } from '@/lib/supabase'
+import { useAuth } from '@/lib/auth'
 
 const PRIORITY_DOT: Record<Task['priority'], string> = {
   low:    '#444',
@@ -26,6 +27,7 @@ const emptyForm = {
   title: '',
   description: '',
   owner: '',
+  owner_id: '',
   due_date: '',
   status: 'todo' as Task['status'],
   priority: 'medium' as Task['priority'],
@@ -129,6 +131,7 @@ function Select({ children, ...props }: React.SelectHTMLAttributes<HTMLSelectEle
 }
 
 export default function ScheduleTab() {
+  const { profiles, profile } = useAuth()
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -156,12 +159,25 @@ export default function ScheduleTab() {
     setLoading(false)
   }
 
+  function openNewForm() {
+    setForm({ ...emptyForm, owner_id: profile?.id ?? '', owner: profile?.display_name ?? '' })
+    setEditingId(null)
+    setShowForm(true)
+  }
+
+  function handleOwnerChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const id = e.target.value
+    const p = profiles.find(pr => pr.id === id)
+    setForm(f => ({ ...f, owner_id: id, owner: p?.display_name ?? '' }))
+  }
+
   async function saveTask() {
     if (!form.title.trim()) return
+    const payload = { ...form }
     if (editingId) {
-      await supabase.from('tasks').update({ ...form }).eq('id', editingId)
+      await supabase.from('tasks').update(payload).eq('id', editingId)
     } else {
-      await supabase.from('tasks').insert([{ ...form }])
+      await supabase.from('tasks').insert([payload])
     }
     setForm(emptyForm)
     setShowForm(false)
@@ -184,6 +200,7 @@ export default function ScheduleTab() {
       title: task.title,
       description: task.description,
       owner: task.owner,
+      owner_id: task.owner_id ?? '',
       due_date: task.due_date ?? '',
       status: task.status,
       priority: task.priority,
@@ -234,7 +251,7 @@ export default function ScheduleTab() {
           </p>
         </div>
         <button
-          onClick={() => { setForm(emptyForm); setEditingId(null); setShowForm(true) }}
+          onClick={openNewForm}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -337,7 +354,12 @@ export default function ScheduleTab() {
             <div style={{ gridColumn: '1 / -1' }}>
               <Textarea placeholder="Description (optional)" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} />
             </div>
-            <Input placeholder="Owner (e.g. Max)" value={form.owner} onChange={e => setForm(f => ({ ...f, owner: e.target.value }))} />
+            <Select value={form.owner_id} onChange={handleOwnerChange}>
+              <option value="">Assign to...</option>
+              {profiles.map(p => (
+                <option key={p.id} value={p.id}>{p.display_name}</option>
+              ))}
+            </Select>
             <Input type="date" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} />
             <Select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as Task['status'] }))}>
               <option value="todo">To Do</option>

@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.80.0",
     "@fontsource/space-mono": "^5.2.9",
     "@supabase/supabase-js": "^2.100.0",
     "lucide-react": "^1.0.1",

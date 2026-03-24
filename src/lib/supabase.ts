@@ -13,6 +13,7 @@ export type Task = {
   title: string
   description: string
   owner: string
+  owner_id: string | null
   due_date: string | null
   status: 'todo' | 'in_progress' | 'done'
   priority: 'low' | 'medium' | 'high'
@@ -25,6 +26,8 @@ export type ResearchEntry = {
   subnet_id: string | null
   description: string
   notes: string
+  owner: string
+  owner_id: string | null
   status: 'researching' | 'promising' | 'pass' | 'active'
   tags: string[]
   created_at: string
@@ -40,4 +43,21 @@ export type WalletEntry = {
   daily_earnings: number
   notes: string
   created_at: string
+}
+
+export type AgentMessage = {
+  id: string
+  agent_id: string
+  role: 'user' | 'assistant'
+  content: string
+  created_at: string
+}
+
+export type AgentMemory = {
+  id: string
+  agent_id: string
+  key: string
+  content: string
+  category: string
+  updated_at: string
 }

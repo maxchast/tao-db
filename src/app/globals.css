@@ -102,6 +102,11 @@ body {
   border-radius: 50%;
 }
 
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
 .status-dot.active::after {
   content: '';
   position: absolute;

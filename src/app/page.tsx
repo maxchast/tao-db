@@ -6,19 +6,39 @@ import DashboardTab from '@/components/dashboard/DashboardTab'
 import ScheduleTab from '@/components/schedule/ScheduleTab'
 import ResearchTab from '@/components/research/ResearchTab'
 import WalletTab from '@/components/wallet/WalletTab'
+import AgentsTab from '@/components/agents/AgentsTab'
+import ProfileTab from '@/components/profile/ProfileTab'
+import LoginScreen from '@/components/auth/LoginScreen'
 import StarField from '@/components/StarField'
+import { useAuth } from '@/lib/auth'
+import { Loader2 } from 'lucide-react'
 
-type Tab = 'dashboard' | 'schedule' | 'research' | 'wallet'
+import type { Tab } from '@/components/Navbar'
 
 const TAB_LABELS: Record<Tab, string> = {
   dashboard: 'Dashboard',
   schedule: 'Schedule',
   research: 'Subnet Research',
   wallet: 'Wallet',
+  agents: 'Agents',
+  profile: 'Profile',
 }
 
 export default function Home() {
+  const { user, loading } = useAuth()
   const [activeTab, setActiveTab] = useState<Tab>('dashboard')
+
+  if (loading) {
+    return (
+      <div className="grid-bg" style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Loader2 size={24} style={{ color: 'var(--text-dim)', animation: 'spin 1s linear infinite' }} />
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <LoginScreen />
+  }
 
   return (
     <div className="min-h-screen grid-bg" style={{ background: 'var(--bg)' }}>
@@ -60,6 +80,8 @@ export default function Home() {
         {activeTab === 'schedule' && <ScheduleTab />}
         {activeTab === 'research' && <ResearchTab />}
         {activeTab === 'wallet' && <WalletTab />}
+        {activeTab === 'agents' && <AgentsTab />}
+        {activeTab === 'profile' && <ProfileTab />}
       </main>
     </div>
   )

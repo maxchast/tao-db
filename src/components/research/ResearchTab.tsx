@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, Pencil, Trash2, X, Tag, ChevronDown, ChevronUp, Search, ArrowUpDown } from 'lucide-react'
 import { supabase, type ResearchEntry } from '@/lib/supabase'
+import { useAuth } from '@/lib/auth'
 
 const STATUS_CONFIG = {
   researching: { label: 'RESEARCHING', color: 'var(--text-secondary)' },
@@ -23,6 +24,8 @@ const emptyForm = {
   subnet_id: '',
   description: '',
   notes: '',
+  owner: '',
+  owner_id: '',
   status: 'researching' as ResearchEntry['status'],
   tags: [] as string[],
 }
@@ -101,6 +104,7 @@ function Select({ children, ...props }: React.SelectHTMLAttributes<HTMLSelectEle
 }
 
 export default function ResearchTab() {
+  const { profiles, profile } = useAuth()
   const [entries, setEntries] = useState<ResearchEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -130,6 +134,19 @@ export default function ResearchTab() {
     setLoading(false)
   }
 
+  function openNewForm() {
+    setForm({ ...emptyForm, owner_id: profile?.id ?? '', owner: profile?.display_name ?? '' })
+    setTagInput('')
+    setEditingId(null)
+    setShowForm(true)
+  }
+
+  function handleOwnerChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const id = e.target.value
+    const p = profiles.find(pr => pr.id === id)
+    setForm(f => ({ ...f, owner_id: id, owner: p?.display_name ?? '' }))
+  }
+
   async function saveEntry() {
     if (!form.subnet_name.trim()) return
     const payload = { ...form, subnet_id: form.subnet_id || null }
@@ -156,6 +173,8 @@ export default function ResearchTab() {
       subnet_id: entry.subnet_id ?? '',
       description: entry.description,
       notes: entry.notes,
+      owner: entry.owner ?? '',
+      owner_id: entry.owner_id ?? '',
       status: entry.status,
       tags: entry.tags ?? [],
     })
@@ -206,7 +225,7 @@ export default function ResearchTab() {
           </p>
         </div>
         <button
-          onClick={() => { setForm(emptyForm); setTagInput(''); setEditingId(null); setShowForm(true) }}
+          onClick={openNewForm}
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '8px 14px',
@@ -306,6 +325,12 @@ export default function ResearchTab() {
             <div style={{ gridColumn: '1 / -1' }}>
               <Textarea placeholder="Notes — requirements, emission rates, observations, links..." value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} />
             </div>
+            <Select value={form.owner_id} onChange={handleOwnerChange}>
+              <option value="">Assign to...</option>
+              {profiles.map(p => (
+                <option key={p.id} value={p.id}>{p.display_name}</option>
+              ))}
+            </Select>
             <Select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as ResearchEntry['status'] }))}>
               <option value="researching">Researching</option>
               <option value="promising">Promising</option>
