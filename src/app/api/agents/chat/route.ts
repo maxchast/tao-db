@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
+import { coerceAnonKey, coerceSupabaseUrl } from '@/lib/supabase'
 
 function getAnthropic() {
   const apiKey = process.env.ANTHROPIC_API_KEY
@@ -8,10 +9,9 @@ function getAnthropic() {
 }
 
 function getSupabase() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
-    process.env.SUPABASE_SERVICE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
-  )
+  const service = process.env.SUPABASE_SERVICE_KEY?.trim()
+  const key = service && service.length >= 20 ? service : coerceAnonKey(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+  return createClient(coerceSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL), key)
 }
 
 const RESEARCH_SYSTEM_PROMPT = `You are the TAO Research Agent — an expert AI assistant specialized in the Bittensor (TAO) ecosystem. You help miners, validators, and researchers navigate the Bittensor network.

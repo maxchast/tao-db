@@ -1,14 +1,31 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl =
-  process.env.NEXT_PUBLIC_SUPABASE_URL ||
-  'https://aispvlaozwogtihodmyk.supabase.co'
+/** Public defaults — same project; env vars override only when valid (Railway may set broken truthy strings). */
+const DEFAULT_URL = 'https://aispvlaozwogtihodmyk.supabase.co'
+const DEFAULT_ANON_KEY = 'sb_publishable_rzkAKn8SBpw8qxu353PLUA_u27Sc63j'
 
-const supabaseAnonKey =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  'sb_publishable_rzkAKn8SBpw8qxu353PLUA_u27Sc63j'
+export function coerceSupabaseUrl(raw: string | undefined): string {
+  const v = raw?.trim()
+  if (!v) return DEFAULT_URL
+  try {
+    const u = new URL(v)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return DEFAULT_URL
+    return v
+  } catch {
+    return DEFAULT_URL
+  }
+}
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export function coerceAnonKey(raw: string | undefined): string {
+  const v = raw?.trim()
+  if (!v || v.length < 20) return DEFAULT_ANON_KEY
+  return v
+}
+
+export const supabase = createClient(
+  coerceSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL),
+  coerceAnonKey(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+)
 
 export type Task = {
   id: string

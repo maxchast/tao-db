@@ -3,6 +3,8 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { AuthProvider } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "TAO Dashboard",
   description: "TAO Mining Project Tracker",
