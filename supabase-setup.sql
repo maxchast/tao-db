@@ -29,3 +29,19 @@ create table if not exists research_entries (
 
 alter table research_entries enable row level security;
 create policy "Allow all" on research_entries for all using (true) with check (true);
+
+-- Wallet entries table
+create table if not exists wallet_entries (
+  id uuid primary key default gen_random_uuid(),
+  wallet_name text not null,
+  coldkey text not null default '',
+  hotkey text not null default '',
+  subnet_id text,
+  stake numeric not null default 0,
+  daily_earnings numeric not null default 0,
+  notes text not null default '',
+  created_at timestamptz not null default now()
+);
+
+alter table wallet_entries enable row level security;
+create policy "Allow all" on wallet_entries for all using (true) with check (true);

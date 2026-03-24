@@ -2,14 +2,23 @@
 
 import { useState } from 'react'
 import Sidebar from '@/components/Navbar'
+import DashboardTab from '@/components/dashboard/DashboardTab'
 import ScheduleTab from '@/components/schedule/ScheduleTab'
 import ResearchTab from '@/components/research/ResearchTab'
+import WalletTab from '@/components/wallet/WalletTab'
 import StarField from '@/components/StarField'
 
-type Tab = 'schedule' | 'research'
+type Tab = 'dashboard' | 'schedule' | 'research' | 'wallet'
+
+const TAB_LABELS: Record<Tab, string> = {
+  dashboard: 'Dashboard',
+  schedule: 'Schedule',
+  research: 'Subnet Research',
+  wallet: 'Wallet',
+}
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<Tab>('schedule')
+  const [activeTab, setActiveTab] = useState<Tab>('dashboard')
 
   return (
     <div className="min-h-screen grid-bg" style={{ background: 'var(--bg)' }}>
@@ -31,7 +40,7 @@ export default function Home() {
               </span>
               <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--text-dim)', display: 'inline-block' }} />
               <span style={{ fontSize: 11, color: 'var(--text-dim)', letterSpacing: '0.08em' }}>
-                {activeTab === 'schedule' ? 'Schedule' : 'Subnet Research'}
+                {TAB_LABELS[activeTab]}
               </span>
             </div>
           </div>
@@ -47,8 +56,10 @@ export default function Home() {
           </div>
         </div>
 
+        {activeTab === 'dashboard' && <DashboardTab />}
         {activeTab === 'schedule' && <ScheduleTab />}
         {activeTab === 'research' && <ResearchTab />}
+        {activeTab === 'wallet' && <WalletTab />}
       </main>
     </div>
   )

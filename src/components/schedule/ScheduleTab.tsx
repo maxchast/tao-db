@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Pencil, Trash2, X } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Search, ArrowUpDown } from 'lucide-react'
 import { supabase, type Task } from '@/lib/supabase'
 
 const PRIORITY_DOT: Record<Task['priority'], string> = {
@@ -135,6 +135,8 @@ export default function ScheduleTab() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [filter, setFilter] = useState<'all' | Task['status']>('all')
+  const [search, setSearch] = useState('')
+  const [sortBy, setSortBy] = useState<'created' | 'due' | 'priority'>('created')
 
   useEffect(() => {
     fetchTasks()
@@ -190,7 +192,27 @@ export default function ScheduleTab() {
     setShowForm(true)
   }
 
-  const filtered = filter === 'all' ? tasks : tasks.filter(t => t.status === filter)
+  const PRIORITY_ORDER: Record<Task['priority'], number> = { high: 0, medium: 1, low: 2 }
+
+  const searched = tasks.filter(t => {
+    if (!search) return true
+    const q = search.toLowerCase()
+    return t.title.toLowerCase().includes(q) || t.description.toLowerCase().includes(q) || t.owner.toLowerCase().includes(q)
+  })
+
+  const statusFiltered = filter === 'all' ? searched : searched.filter(t => t.status === filter)
+
+  const filtered = [...statusFiltered].sort((a, b) => {
+    if (sortBy === 'due') {
+      if (!a.due_date && !b.due_date) return 0
+      if (!a.due_date) return 1
+      if (!b.due_date) return -1
+      return a.due_date.localeCompare(b.due_date)
+    }
+    if (sortBy === 'priority') return PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  })
+
   const counts = {
     all: tasks.length,
     todo: tasks.filter(t => t.status === 'todo').length,
@@ -232,6 +254,44 @@ export default function ScheduleTab() {
           <Plus size={12} />
           ADD TASK
         </button>
+      </div>
+
+      {/* Search + Sort row */}
+      <div className="flex gap-3 mb-4" style={{ alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: 1, maxWidth: 300 }}>
+          <Search size={12} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)' }} />
+          <Input
+            placeholder="Search tasks..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ paddingLeft: 30 }}
+          />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <ArrowUpDown size={11} style={{ color: 'var(--text-dim)' }} />
+          {(['created', 'due', 'priority'] as const).map(s => (
+            <button
+              key={s}
+              onClick={() => setSortBy(s)}
+              style={{
+                padding: '4px 10px',
+                border: '1px solid',
+                borderColor: sortBy === s ? 'var(--border-bright)' : 'var(--border)',
+                borderRadius: 2,
+                background: sortBy === s ? 'var(--surface-2)' : 'transparent',
+                color: sortBy === s ? 'var(--text-primary)' : 'var(--text-dim)',
+                fontSize: 9,
+                fontFamily: 'inherit',
+                letterSpacing: '0.1em',
+                cursor: 'pointer',
+                textTransform: 'uppercase',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              {s === 'created' ? 'NEWEST' : s === 'due' ? 'DUE DATE' : 'PRIORITY'}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Filter row */}

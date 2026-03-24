@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Pencil, Trash2, X, Tag, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Tag, ChevronDown, ChevronUp, Search, ArrowUpDown } from 'lucide-react'
 import { supabase, type ResearchEntry } from '@/lib/supabase'
 
 const STATUS_CONFIG = {
@@ -109,6 +109,8 @@ export default function ResearchTab() {
   const [tagInput, setTagInput] = useState('')
   const [filter, setFilter] = useState<'all' | ResearchEntry['status']>('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [sortBy, setSortBy] = useState<'created' | 'name' | 'status'>('created')
 
   useEffect(() => {
     fetchEntries()
@@ -167,7 +169,21 @@ export default function ResearchTab() {
     setTagInput('')
   }
 
-  const filtered = filter === 'all' ? entries : entries.filter(e => e.status === filter)
+  const STATUS_ORDER: Record<ResearchEntry['status'], number> = { active: 0, promising: 1, researching: 2, pass: 3 }
+
+  const searched = entries.filter(e => {
+    if (!search) return true
+    const q = search.toLowerCase()
+    return e.subnet_name.toLowerCase().includes(q) || e.description.toLowerCase().includes(q) || e.notes.toLowerCase().includes(q) || (e.tags ?? []).some(t => t.toLowerCase().includes(q))
+  })
+
+  const statusFiltered = filter === 'all' ? searched : searched.filter(e => e.status === filter)
+
+  const filtered = [...statusFiltered].sort((a, b) => {
+    if (sortBy === 'name') return a.subnet_name.localeCompare(b.subnet_name)
+    if (sortBy === 'status') return STATUS_ORDER[a.status] - STATUS_ORDER[b.status]
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  })
   const counts = {
     all: entries.length,
     researching: entries.filter(e => e.status === 'researching').length,
@@ -204,6 +220,44 @@ export default function ResearchTab() {
           <Plus size={12} />
           ADD SUBNET
         </button>
+      </div>
+
+      {/* Search + Sort */}
+      <div className="flex gap-3 mb-4" style={{ alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: 1, maxWidth: 300 }}>
+          <Search size={12} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)' }} />
+          <Input
+            placeholder="Search subnets..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ paddingLeft: 30 }}
+          />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <ArrowUpDown size={11} style={{ color: 'var(--text-dim)' }} />
+          {(['created', 'name', 'status'] as const).map(s => (
+            <button
+              key={s}
+              onClick={() => setSortBy(s)}
+              style={{
+                padding: '4px 10px',
+                border: '1px solid',
+                borderColor: sortBy === s ? 'var(--border-bright)' : 'var(--border)',
+                borderRadius: 2,
+                background: sortBy === s ? 'var(--surface-2)' : 'transparent',
+                color: sortBy === s ? 'var(--text-primary)' : 'var(--text-dim)',
+                fontSize: 9,
+                fontFamily: 'inherit',
+                letterSpacing: '0.1em',
+                cursor: 'pointer',
+                textTransform: 'uppercase',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              {s === 'created' ? 'NEWEST' : s === 'name' ? 'NAME' : 'STATUS'}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Filters */}

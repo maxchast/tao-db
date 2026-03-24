@@ -29,3 +29,15 @@ export type ResearchEntry = {
   tags: string[]
   created_at: string
 }
+
+export type WalletEntry = {
+  id: string
+  wallet_name: string
+  coldkey: string
+  hotkey: string
+  subnet_id: string | null
+  stake: number
+  daily_earnings: number
+  notes: string
+  created_at: string
+}

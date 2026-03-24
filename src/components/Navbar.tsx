@@ -1,9 +1,9 @@
 'use client'
 
 import { useTheme } from './ThemeProvider'
-import { Sun, Moon, CalendarDays, FlaskConical, Hexagon } from 'lucide-react'
+import { Sun, Moon, CalendarDays, FlaskConical, Hexagon, LayoutDashboard, Wallet } from 'lucide-react'
 
-type Tab = 'schedule' | 'research'
+type Tab = 'dashboard' | 'schedule' | 'research' | 'wallet'
 
 interface SidebarProps {
   activeTab: Tab
@@ -11,8 +11,10 @@ interface SidebarProps {
 }
 
 const NAV_ITEMS = [
+  { id: 'dashboard' as Tab, icon: LayoutDashboard, label: 'Dashboard' },
   { id: 'schedule' as Tab, icon: CalendarDays, label: 'Schedule' },
   { id: 'research' as Tab, icon: FlaskConical, label: 'Subnet Research' },
+  { id: 'wallet' as Tab, icon: Wallet, label: 'Wallet' },
 ]
 
 export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
