@@ -1,15 +1,17 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Send, Loader2, Trash2, Brain } from 'lucide-react'
+import { Send, Loader2, Brain } from 'lucide-react'
 import { supabase, type AgentMessage } from '@/lib/supabase'
 
 interface ChatUIProps {
   agentId: string
   agentName: string
+  /** Increment from parent (e.g. Agents tab) to refetch after external clear */
+  refreshSignal?: number
 }
 
-export default function ChatUI({ agentId, agentName }: ChatUIProps) {
+export default function ChatUI({ agentId, agentName, refreshSignal = 0 }: ChatUIProps) {
   const [messages, setMessages] = useState<AgentMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -29,6 +31,11 @@ export default function ChatUI({ agentId, agentName }: ChatUIProps) {
   }, [agentId])
 
   useEffect(() => {
+    if (refreshSignal === 0) return
+    fetchHistory()
+  }, [refreshSignal])
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
@@ -41,11 +48,6 @@ export default function ChatUI({ agentId, agentName }: ChatUIProps) {
       .limit(100)
     if (data) setMessages(data)
     setHistoryLoading(false)
-  }
-
-  async function clearHistory() {
-    await supabase.from('agent_messages').delete().eq('agent_id', agentId)
-    setMessages([])
   }
 
   async function sendMessage() {
@@ -126,26 +128,6 @@ export default function ChatUI({ agentId, agentName }: ChatUIProps) {
             {agentName} · shared context
           </span>
         </div>
-        <button
-          onClick={clearHistory}
-          title="Clear chat history"
-          style={{
-            display: 'flex', alignItems: 'center', gap: 5,
-            padding: '5px 10px',
-            background: 'none',
-            border: '1px solid var(--border)',
-            borderRadius: 3,
-            fontSize: 9,
-            fontFamily: 'inherit',
-            letterSpacing: '0.08em',
-            color: 'var(--text-dim)',
-            cursor: 'pointer',
-            textTransform: 'uppercase',
-          }}
-        >
-          <Trash2 size={10} />
-          CLEAR
-        </button>
       </div>
 
       {/* Messages area */}

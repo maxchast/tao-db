@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { FlaskConical, ScrollText, BarChart3, Wallet, HeartPulse, Bot } from 'lucide-react'
+import { FlaskConical, ScrollText, BarChart3, Wallet, HeartPulse, Bot, Trash2 } from 'lucide-react'
 import ChatUI from './ChatUI'
+import { supabase } from '@/lib/supabase'
 
 type AgentId = 'research' | 'logs' | 'stats' | 'wallet' | 'health'
 
@@ -24,17 +25,66 @@ const AGENTS: AgentDef[] = [
 
 export default function AgentsTab() {
   const [selectedAgent, setSelectedAgent] = useState<AgentId>('research')
+  const [chatRefreshSignal, setChatRefreshSignal] = useState(0)
+  const [clearing, setClearing] = useState(false)
   const agent = AGENTS.find(a => a.id === selectedAgent)!
+
+  async function clearChatHistory() {
+    if (!agent.ready) return
+    if (!window.confirm(`Clear all chat history for ${agent.name}?`)) return
+    setClearing(true)
+    const { error } = await supabase.from('agent_messages').delete().eq('agent_id', selectedAgent)
+    setClearing(false)
+    if (error) {
+      window.alert(`Could not clear history: ${error.message}`)
+      return
+    }
+    setChatRefreshSignal(n => n + 1)
+  }
 
   return (
     <div className="fade-in">
-      <div className="mb-6">
-        <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
-          Agents
-        </h1>
-        <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4, letterSpacing: '0.04em' }}>
-          AI-powered assistants for your TAO mining workflow
-        </p>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
+            Agents
+          </h1>
+          <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4, letterSpacing: '0.04em' }}>
+            AI-powered assistants for your TAO mining workflow
+          </p>
+        </div>
+        {agent.ready && (
+          <button
+            type="button"
+            onClick={clearChatHistory}
+            disabled={clearing}
+            title="Delete all messages for this agent from the database"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '8px 14px',
+              background: 'transparent',
+              border: '1px solid var(--border)',
+              borderRadius: 3,
+              fontSize: 11,
+              fontFamily: 'inherit',
+              letterSpacing: '0.06em',
+              color: 'var(--text-secondary)',
+              cursor: clearing ? 'wait' : 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={e => {
+              if (!clearing) (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border-bright)'
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)'
+            }}
+          >
+            <Trash2 size={13} />
+            CLEAR CHAT HISTORY
+          </button>
+        )}
       </div>
 
       {/* Agent selector */}
@@ -86,7 +136,7 @@ export default function AgentsTab() {
 
       {/* Agent content */}
       {agent.ready ? (
-        <ChatUI agentId={agent.id} agentName={agent.name} />
+        <ChatUI agentId={agent.id} agentName={agent.name} refreshSignal={chatRefreshSignal} />
       ) : (
         <div
           style={{
