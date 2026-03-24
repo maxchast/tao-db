@@ -1,9 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 import { coerceAnonKey, coerceSupabaseUrl } from '@/lib/supabase'
 
-const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages'
+const OPENAI_CHAT_URL = 'https://api.openai.com/v1/chat/completions'
 
-function normalizeAnthropicKey(raw: string | undefined): string | null {
+function normalizeOpenAiKey(raw: string | undefined): string | null {
   if (!raw) return null
   let k = raw
     .replace(/^\uFEFF/, '')
@@ -16,42 +16,48 @@ function normalizeAnthropicKey(raw: string | undefined): string | null {
   return k || null
 }
 
-function getAnthropicApiKey(): string {
-  const apiKey = normalizeAnthropicKey(
-    process.env.ANTHROPIC_API_KEY ?? process.env.CLAUDE_API_KEY
-  )
+function getOpenAiApiKey(): string {
+  const apiKey = normalizeOpenAiKey(process.env.OPENAI_API_KEY)
   if (!apiKey) {
     throw new Error(
-      'ANTHROPIC_API_KEY is not set — add it in Railway → Variables (service, not build-only). Optional alias: CLAUDE_API_KEY.'
+      'OPENAI_API_KEY is not set — add it in Railway → Variables (service). Get a key from platform.openai.com/api-keys.'
     )
   }
   return apiKey
 }
 
-type ApiContentBlock =
-  | { type: 'text'; text: string }
-  | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
-
-type ApiMessageResponse = {
+type OpenAIToolCall = {
   id: string
-  role: string
-  content: ApiContentBlock[]
-  stop_reason: string | null
+  type: 'function'
+  function: { name: string; arguments: string }
 }
 
-type MessageRow = { role: 'user' | 'assistant'; content: string }
+type ChatCompletionMessage =
+  | { role: 'system'; content: string }
+  | { role: 'user'; content: string }
+  | { role: 'assistant'; content: string | null; tool_calls?: OpenAIToolCall[] }
+  | { role: 'tool'; tool_call_id: string; content: string }
 
-/** Raw HTTP: only `x-api-key` + `anthropic-version` — avoids SDK / Bearer header edge cases. */
-async function anthropicMessagesCreate(
+type ChatCompletionResponse = {
+  choices: Array<{
+    message: {
+      role: string
+      content: string | null
+      tool_calls?: OpenAIToolCall[]
+    }
+    finish_reason: string | null
+  }>
+}
+
+async function openAiChatComplete(
   apiKey: string,
   body: Record<string, unknown>
-): Promise<ApiMessageResponse> {
-  const res = await fetch(ANTHROPIC_MESSAGES_URL, {
+): Promise<ChatCompletionResponse> {
+  const res = await fetch(OPENAI_CHAT_URL, {
     method: 'POST',
     headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
   })
@@ -59,32 +65,25 @@ async function anthropicMessagesCreate(
   if (!res.ok) {
     throw new Error(`${res.status} ${raw}`)
   }
-  return JSON.parse(raw) as ApiMessageResponse
+  return JSON.parse(raw) as ChatCompletionResponse
 }
 
-/**
- * Temporary: set AGENT_DEBUG=1 in Railway, GET this URL, then remove AGENT_DEBUG.
- * Tells you if the key exists at runtime (length) without printing the secret.
- */
+/** Set AGENT_DEBUG=1 in Railway, GET this URL, then remove AGENT_DEBUG. */
 export async function GET() {
   if (process.env.AGENT_DEBUG !== '1') {
     return Response.json({ error: 'Not found' }, { status: 404 })
   }
-  const key = normalizeAnthropicKey(
-    process.env.ANTHROPIC_API_KEY ?? process.env.CLAUDE_API_KEY
-  )
+  const key = normalizeOpenAiKey(process.env.OPENAI_API_KEY)
   return Response.json({
-    anthropic_key_present: Boolean(key),
-    anthropic_key_length: key?.length ?? 0,
-    looks_like_anthropic_key: key?.startsWith('sk-ant-') ?? false,
-    hint:
-      !key
-        ? 'ANTHROPIC_API_KEY missing at runtime — wrong service or redeploy needed'
-        : key.length < 90
-          ? 'Key looks too short — compare length to console.anthropic.com copy'
-          : !key.startsWith('sk-ant-')
-            ? 'Key should start with sk-ant-'
-            : 'Key shape OK; if chat still 401, key is revoked/wrong workspace — create a new key in Anthropic console',
+    openai_key_present: Boolean(key),
+    openai_key_length: key?.length ?? 0,
+    looks_like_openai_key: key?.startsWith('sk-') ?? false,
+    default_model: process.env.OPENAI_MODEL?.trim() || 'gpt-4o',
+    hint: !key
+      ? 'OPENAI_API_KEY missing at runtime — set variable and redeploy'
+      : !key.startsWith('sk-')
+        ? 'OpenAI secret keys usually start with sk-'
+        : 'Key shape OK; 401 means wrong/revoked key in platform.openai.com',
   })
 }
 
@@ -154,38 +153,60 @@ const RESEARCH_SYSTEM_PROMPT = `You are the TAO Research Agent — an expert AI 
 7. Reference previous research and chat context when relevant.
 8. Format responses with markdown for readability.`
 
-const MEMORY_TOOLS: Record<string, unknown>[] = [
+const OPENAI_TOOLS: Array<{
+  type: 'function'
+  function: {
+    name: string
+    description: string
+    parameters: Record<string, unknown>
+  }
+}> = [
   {
-    name: 'save_memory',
-    description: 'Save an important fact, decision, or research finding to shared team memory. Use this when you learn something that would be valuable for the whole team to know in future conversations.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        key: { type: 'string', description: 'Short descriptive key for this memory (e.g. "sn8_hardware_reqs", "team_decision_staking_strategy")' },
-        content: { type: 'string', description: 'The information to remember' },
-        category: { type: 'string', enum: ['subnet_research', 'team_decision', 'market_insight', 'technical_note', 'strategy'], description: 'Category of this memory' },
+    type: 'function',
+    function: {
+      name: 'save_memory',
+      description:
+        'Save an important fact, decision, or research finding to shared team memory. Use when you learn something valuable for the whole team in future conversations.',
+      parameters: {
+        type: 'object',
+        properties: {
+          key: {
+            type: 'string',
+            description: 'Short key (e.g. sn8_hardware_reqs, team_decision_staking_strategy)',
+          },
+          content: { type: 'string', description: 'The information to remember' },
+          category: {
+            type: 'string',
+            enum: ['subnet_research', 'team_decision', 'market_insight', 'technical_note', 'strategy'],
+            description: 'Category of this memory',
+          },
+        },
+        required: ['key', 'content', 'category'],
       },
-      required: ['key', 'content', 'category'],
     },
   },
   {
-    name: 'search_memory',
-    description: 'Search shared team memory for previously saved information. Use this to recall past research, decisions, or findings.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        query: { type: 'string', description: 'Search query to find relevant memories' },
+    type: 'function',
+    function: {
+      name: 'search_memory',
+      description:
+        'Search shared team memory for previously saved information. Use to recall past research, decisions, or findings.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Search query' },
+        },
+        required: ['query'],
       },
-      required: ['query'],
     },
   },
   {
-    name: 'get_research_entries',
-    description: 'Get the team\'s subnet research entries from the dashboard. Use this to see what subnets the team is tracking and their current status.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {},
-      required: [],
+    type: 'function',
+    function: {
+      name: 'get_research_entries',
+      description:
+        "Get the team's subnet research entries from the dashboard — subnets tracked and their status.",
+      parameters: { type: 'object', properties: {} },
     },
   },
 ]
@@ -223,6 +244,19 @@ async function handleToolCall(toolName: string, toolInput: Record<string, string
   return JSON.stringify({ error: 'Unknown tool' })
 }
 
+function parseToolArgs(json: string): Record<string, string> {
+  try {
+    const o = JSON.parse(json || '{}') as Record<string, unknown>
+    const out: Record<string, string> = {}
+    for (const [k, v] of Object.entries(o)) {
+      out[k] = v == null ? '' : String(v)
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const { message, agentId } = await request.json()
@@ -231,7 +265,7 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Agent not implemented yet' }, { status: 400 })
     }
 
-    const apiKey = getAnthropicApiKey()
+    const apiKey = getOpenAiApiKey()
     const supabase = getSupabase()
 
     await supabase.from('agent_messages').insert([{
@@ -254,87 +288,89 @@ export async function POST(request: Request) {
       .order('updated_at', { ascending: false })
       .limit(30)
 
-    // Build memory context
-    const memoryContext = memories && memories.length > 0
-      ? `\n\n## Shared Team Memory\nThe following are previously saved research notes and decisions:\n${memories.map(m => `- **[${m.category}] ${m.key}**: ${m.content}`).join('\n')}`
-      : ''
+    const memoryContext =
+      memories && memories.length > 0
+        ? `\n\n## Shared Team Memory\nThe following are previously saved research notes and decisions:\n${memories.map(m => `- **[${m.category}] ${m.key}**: ${m.content}`).join('\n')}`
+        : ''
 
-    const messages: Array<{
-      role: 'user' | 'assistant'
-      content: string | ApiContentBlock[] | Array<{ type: 'tool_result'; tool_use_id: string; content: string }>
-    }> = (history ?? []).map(msg => ({
-      role: msg.role as 'user' | 'assistant',
-      content: msg.content,
-    }))
+    const messages: ChatCompletionMessage[] = [
+      { role: 'system', content: RESEARCH_SYSTEM_PROMPT + memoryContext },
+      ...(history ?? []).map(
+        (msg: { role: string; content: string }) =>
+          ({
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content,
+          }) as ChatCompletionMessage
+      ),
+    ]
 
-    const model = process.env.ANTHROPIC_MODEL?.trim() || 'claude-sonnet-4-20250514'
+    const model = process.env.OPENAI_MODEL?.trim() || 'gpt-4o'
+    const maxToolRounds = 12
+    let rounds = 0
+    let textContent = ''
 
-    let response = await anthropicMessagesCreate(apiKey, {
-      model,
-      max_tokens: 2048,
-      system: RESEARCH_SYSTEM_PROMPT + memoryContext,
-      tools: MEMORY_TOOLS,
-      messages,
-    })
+    while (rounds < maxToolRounds) {
+      rounds += 1
+      const data = await openAiChatComplete(apiKey, {
+        model,
+        messages,
+        tools: OPENAI_TOOLS,
+        tool_choice: 'auto',
+        max_tokens: 2048,
+      })
 
-    while (response.stop_reason === 'tool_use') {
-      const toolBlocks = response.content.filter(
-        (b): b is { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> } =>
-          b.type === 'tool_use'
-      )
-
-      const toolResults: Array<{ type: 'tool_result'; tool_use_id: string; content: string }> = []
-      for (const tool of toolBlocks) {
-        const result = await handleToolCall(
-          tool.name,
-          tool.input as Record<string, string>,
-          supabase
-        )
-        toolResults.push({
-          type: 'tool_result',
-          tool_use_id: tool.id,
-          content: result,
-        })
+      const choice = data.choices[0]
+      if (!choice) {
+        throw new Error('OpenAI returned no choices')
       }
 
-      messages.push({ role: 'assistant', content: response.content })
-      messages.push({ role: 'user', content: toolResults })
+      const { message: assistantMsg, finish_reason: finish } = choice
 
-      response = await anthropicMessagesCreate(apiKey, {
-        model,
-        max_tokens: 2048,
-        system: RESEARCH_SYSTEM_PROMPT + memoryContext,
-        tools: MEMORY_TOOLS,
-        messages,
-      })
+      if (finish === 'tool_calls' && assistantMsg.tool_calls?.length) {
+        messages.push({
+          role: 'assistant',
+          content: assistantMsg.content,
+          tool_calls: assistantMsg.tool_calls,
+        })
+        for (const tc of assistantMsg.tool_calls) {
+          const args = parseToolArgs(tc.function.arguments)
+          const result = await handleToolCall(tc.function.name, args, supabase)
+          messages.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            content: result,
+          })
+        }
+        continue
+      }
+
+      textContent = assistantMsg.content?.trim() ?? ''
+      break
     }
 
-    const textContent = response.content
-      .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
-      .map(b => b.text)
-      .join('')
+    if (rounds >= maxToolRounds && !textContent) {
+      textContent = '_Tool loop limit reached. Try a simpler question._'
+    }
 
-    // Save assistant message
     await supabase.from('agent_messages').insert([{
       agent_id: agentId,
       role: 'assistant',
-      content: textContent,
+      content: textContent || '(No response)',
     }])
 
-    return Response.json({ response: textContent })
+    return Response.json({ response: textContent || '(No response)' })
   } catch (err) {
     console.error('Agent chat error:', err)
     const message = err instanceof Error ? err.message : String(err)
     const authFail =
       message.includes('401') ||
-      message.includes('authentication_error') ||
-      message.includes('invalid x-api-key') ||
-      message.includes('x-api-key')
+      message.includes('invalid_api_key') ||
+      message.includes('Incorrect API key')
     if (authFail) {
       return Response.json(
         {
           error:
-            'Anthropic rejected the API key (401). In Railway → Variables, set ANTHROPIC_API_KEY to a current key from console.anthropic.com — no quotes, no spaces. Redeploy after saving. If this key was ever shared publicly, create a new key there.',
+            'OpenAI rejected the API key (401). In Railway → Variables set OPENAI_API_KEY to your secret key from platform.openai.com/api-keys — no quotes. Redeploy after saving.',
         },
         { status: 502 }
       )

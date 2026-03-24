@@ -15,7 +15,7 @@ interface AgentDef {
 }
 
 const AGENTS: AgentDef[] = [
-  { id: 'research', name: 'Research Agent', description: 'Subnet research & TAO ecosystem intelligence', icon: FlaskConical, ready: true },
+  { id: 'research', name: 'Research Agent', description: 'Subnet research & TAO intel (OpenAI GPT)', icon: FlaskConical, ready: true },
   { id: 'logs',     name: 'Logs Agent',     description: 'Monitor and analyze miner/validator logs',    icon: ScrollText,   ready: false },
   { id: 'stats',    name: 'Stats Agent',    description: 'Network statistics and metagraph analysis',   icon: BarChart3,    ready: false },
   { id: 'wallet',   name: 'Wallet Agent',   description: 'Stake tracking, emissions, and earnings',     icon: Wallet,       ready: false },
